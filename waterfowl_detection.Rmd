@@ -1,0 +1,180 @@
+---
+title: "waterfowl_detection"
+output: pdf_document
+date: "2024-10-29"
+---
+
+```{r}
+#library(rnoaa)
+library(ncdf4)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(bioRad)
+library(sp)
+library(ggspatial)
+
+# Setting file path to download files into
+directory <- "./pvol_files"
+
+# if folder does not exist, create it
+if (!dir.exists(directory)) {
+  dir.create(directory, recursive = TRUE)
+}
+
+# Define years for data import
+year_vector <- c('2022','2023') #Adjust as needed
+all_dates <- c()
+
+for (year in year_vector) {
+  start_date <- as.Date(paste(year, "10","01", sep='-'))  # Adjust as needed
+  end_date <- as.Date(paste(year, "11","30", sep='-'))
+
+  date_vector <- seq(from = start_date, to = end_date, by = "day")
+  all_dates <- c(all_dates, date_vector) # Combine each iteration of the loop to one vector
+
+  for (date in all_dates) {
+    date_min <- paste(as.Date(date), "00:00", sep = " ")
+    date_max <- paste(as.Date(date), "23:59", sep = " ")
+    
+   # Download files within a date range
+    download_pvolfiles(date_min=as.POSIXct(date_min, tz = "UTC"),
+                       date_max = as.POSIXct(date_max, tz = "UTC"),
+                       radar = "KARX",
+                       directory = directory,
+                       overwrite = TRUE)
+  }
+}
+my_pvolfiles = list.files(directory, 
+                          recursive = TRUE, 
+                          full.names = TRUE, 
+                          pattern="KARX")
+my_pvolfiles
+```
+
+```{r}
+#what are we looking at
+target_lat <- 43.822761  # Example: La Crosse, WI
+target_lon <- -91.191248
+radius_km <- 50          # Radius around target location in km - experimenting
+reflectivity_min <- 15
+reflectivity_max <- 30
+
+pvol <- read_pvolfile(my_pvolfiles[1])
+pvol=get_scan(pvol[1])
+pvol=data(pvol)
+scan1 <- scan_to_spatial(pvol)
+
+raster=scan_to_raster(pvol, xlim=c(91,92), ylim=c(43,44), res=.01)
+plot(raster)
+
+names(pvol$params)
+ppi = project_as_ppi(scan1)
+ppi_data = ppi$data
+ppi_data
+
+df_spatial(ppi)
+
+basemap <- download_basemap(ppi)
+# then overlay the PPI on the satellite image:
+map(ppi, map = basemap, param = "VRADH")
+
+# Convert the SpatialGridDataFrame to a standard data frame
+ppi_df <- as.data.frame(ppi_data, xy = TRUE)
+
+# View the first few rows of the converted data frame
+ppi_df
+install.packages("hdf5r")
+library(hdf5r)
+h5file <- H5File$new('./pvol_files/2022/10/24/KARX/KARX20221024_000401_V06.h5', mode = "r")
+print(h5file)
+
+
+
+```
+
+```{r}
+# Function to identify and visualize potential waterfowl
+identify_waterfowl <- function(filtered_data) {
+  # Identify potential waterfowl by finding clusters with the reflectivity range for waterfowl
+  flock_data <- filtered_data %>%
+    filter(reflectivity >= reflectivity_min & reflectivity <= reflectivity_max)
+  
+  if (nrow(flock_data) > 0) {
+    print(paste("Possible waterfowl detected at", nrow(flock_data), "locations."))
+  } else {
+    print("No waterfowl detected.")
+  }
+  
+  return(flock_data)
+} 
+```
+
+```{r}
+# Visualization using ggplot2 and leaflet
+visualize_data <- function(flock_data) {
+  # Plot on a map using ggplot2
+  ggplot(data = flock_data, aes(x = lon, y = lat, color = reflectivity)) +
+    geom_point() +
+    scale_color_gradient(low = "blue", high = "red") +
+    labs(title = "Possible Waterfowl Flocks Detected", x = "Longitude", y = "Latitude") +
+    theme_minimal()
+  
+  # Alternatively, visualize with leaflet
+  leaflet(data = flock_data) %>%
+    addTiles() %>%
+    addCircleMarkers(~lon, ~lat, color = ~reflectivity, radius = 3, fillOpacity = 0.7) %>%
+    addLegend("bottomright", pal = colorNumeric("viridis", NULL), values = ~reflectivity,
+              title = "Reflectivity (dBZ)")
+}
+```
+
+```{r}
+# Main Script Execution
+nc_data <- download_nexrad_data(station_id, date)
+filtered_data <- filter_by_location(nc_data, target_lat, target_lon, radius_km)
+flock_data <- identify_waterfowl(filtered_data)
+
+# Visualize potential waterfowl locations
+if (nrow(flock_data) > 0) {
+  visualize_data(flock_data)
+}
+```
+
+```{r}
+# Load bioRad package
+library(bioRad)
+```
+
+Download RADAR Data
+
+```{r}
+
+pvol <- download_basemap(station=station_id, datetime = as.POSIXct(date, tz="UTC"))
+```
+
+FIlter by Reflectivity and Location
+
+```{r}
+filtered_data <- pvol 
+  project_as_latlon()    # Convert to lat/lon coordinates
+  filter_vp(refl_min = reflectivity_min, refl_max = reflectivity_max)
+  filter(distance <= radius_km * 1000)
+```
+
+Identify biological echoes (model classifies biological vs weather)
+
+```{r}
+biological_echoes <- classify(filtered_data, model = "bird")
+```
+
+```{r}
+plot(biological_echoes) +
+  ggtitle("Detected Biological Echoes (Potential Waterfowl)") 
+```
+
+```{r}
+ #Optional: More detailed analysis of altitude profiles, density, and movement patterns
+vp <- compute_vp(filtered_data)
+plot(vp, quantity = "dens")  # Visualize bird density by altitude
+```
