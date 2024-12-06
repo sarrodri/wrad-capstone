@@ -1,0 +1,86 @@
+---
+title: "waterfowl_detection"
+output: pdf_document
+date: "2024-10-29"
+---
+
+```{r}
+#library(rnoaa)
+library(ncdf4)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(bioRad)
+library(sp)
+library(ggspatial)
+
+# Setting file path to download files into
+directory <- "./pvol_files"
+
+# if folder does not exist, create it
+if (!dir.exists(directory)) {
+  dir.create(directory, recursive = TRUE)
+}
+
+# Define years for data import
+year_vector <- c('2022','2023') #Adjust as needed
+all_dates <- c()
+
+for (year in year_vector) {
+  start_date <- as.Date(paste(year, "10","01", sep='-'))  # Adjust as needed
+  end_date <- as.Date(paste(year, "11","30", sep='-'))
+
+  date_vector <- seq(from = start_date, to = end_date, by = "day")
+  all_dates <- c(all_dates, date_vector) # Combine each iteration of the loop to one vector
+
+  for (date in all_dates) {
+    date_min <- paste(as.Date(date), "00:00", sep = " ")
+    date_max <- paste(as.Date(date), "23:59", sep = " ")
+    
+   # Download files within a date range
+    download_pvolfiles(date_min=as.POSIXct(date_min, tz = "UTC"),
+                       date_max = as.POSIXct(date_max, tz = "UTC"),
+                       radar = "KARX",
+                       directory = directory,
+                       overwrite = TRUE)
+  }
+}
+my_pvolfiles = list.files(directory, 
+                          recursive = TRUE, 
+                          full.names = TRUE, 
+                          pattern="KARX")
+my_pvolfiles
+```
+
+```{r}
+#what are we looking at
+target_lat <- 43.822761  # Example: La Crosse, WI
+target_lon <- -91.191248
+radius_km <- 50          # Radius around target location in km - experimenting
+reflectivity_min <- 15
+reflectivity_max <- 30
+
+pvol <- read_pvolfile(my_pvolfiles[1])
+pvol=get_scan(pvol[1])
+pvol=data(pvol)
+scan1 <- scan_to_spatial(pvol)
+
+raster=scan_to_raster(pvol, xlim=c(91,92), ylim=c(43,44), res=.01)
+plot(raster)
+
+names(pvol$params)
+ppi = project_as_ppi(scan1)
+ppi_data = ppi$data
+ppi_data
+
+df_spatial(ppi)
+
+basemap <- download_basemap(ppi)
+# then overlay the PPI on the satellite image:
+map(ppi, map = basemap, param = "VRADH")
+
+# Convert the SpatialGridDataFrame to a standard data frame
+ppi_df <- as.data.frame(ppi_data, xy = TRUE)
+
+
+```
