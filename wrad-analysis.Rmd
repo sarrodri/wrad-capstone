@@ -12,7 +12,12 @@ library(ggplot2)
 library(leaflet)
 library(bioRad)
 library(sp)
+library(sf)
+library(ggthemes)
 library(ggspatial)
+```
+
+```{r}
 
 # Setting file path to download files into
 directory <- "./pvol_files"
@@ -23,64 +28,242 @@ if (!dir.exists(directory)) {
 }
 
 # Define years for data import
-year_vector <- c('2022','2023') #Adjust as needed
+year_vector <- c('2022','2023') #Input years to download
 all_dates <- c()
 
+# COMMENTED OUT BECAUSE DOWNLOADING THIS IS A LOT TO DO ON ACCIDENT
+
 for (year in year_vector) {
-  start_date <- as.Date(paste(year, "10","01", sep='-'))  # Adjust as needed
-  end_date <- as.Date(paste(year, "11","30", sep='-'))
+   start_date <- as.Date(paste(year, "10","22", sep='-'))  # Input days to download
+   end_date <- as.Date(paste(year, "11","7", sep='-'))
+     
+   date_min <- paste(as.Date(start_date), "00:00", sep = " ")
+   date_max <- paste(as.Date(end_date), "23:59", sep = " ")
 
-  date_vector <- seq(from = start_date, to = end_date, by = "day")
-  all_dates <- c(all_dates, date_vector) # Combine each iteration of the loop to one vector
-
-  for (date in all_dates) {
-    date_min <- paste(as.Date(date), "00:00", sep = " ")
-    date_max <- paste(as.Date(date), "23:59", sep = " ")
-    
    # Download files within a date range
-    download_pvolfiles(date_min=as.POSIXct(date_min, tz = "UTC"),
-                       date_max = as.POSIXct(date_max, tz = "UTC"),
-                       radar = "KARX",
-                       directory = directory,
-                       overwrite = TRUE)
-  }
+   download_pvolfiles(date_min=as.POSIXct(date_min, tz = "UTC"),
+                     date_max = as.POSIXct(date_max, tz = "UTC"),
+                     radar = "KARX",
+                     directory = directory,
+                     overwrite = TRUE)
+  #}
 }
+
+# my_pvolfiles = list.files(directory, 
+#                           recursive = TRUE, 
+#                           full.names = TRUE, 
+#                           pattern="KARX")
+# my_pvolfiles
+
+# all_dates
+# date_vector
+# date_min
+# date_max
+
+```
+
+```{r}
+
+#what are we looking at} target_lat \<- 43.822761 \# Example: La Crosse, WI target_lon \<- -91.191248 radius_km \<- 50 \# Radius around target location in km - experimenting reflectivity_min \<- 15 reflectivity_max \<- 30
+
 my_pvolfiles = list.files(directory, 
                           recursive = TRUE, 
                           full.names = TRUE, 
                           pattern="KARX")
-my_pvolfiles
+# Loop to convert each scan into a dataframe, then store with the naming convention {date}_{time}_DF (data frame)??
+for (pvolfile in my_pvolfiles) {
+  pvol = read_pvolfile(pvolfile)
+  scan = get_scan(pvol, 3)
+  spatial = scan_to_spatial(scan)
+  spatial_df = spTransform(spatial, CRS("+proj=longlat +datum=WGS84"))
+  filename = pvolfile
+  
+  write.csv(spatial_df,"./data/{filename}.csv", row.names = T) #look into saving to a GeoJSON file
+}
+
+# Testing with one scan
+pvol = read_pvolfile(my_pvolfiles[1])
+scan = get_scan(pvol,3)
+scan
+scan1 = scan_to_spatial(scan)
+scan1 #class: SpatialPointsDataFrame
+str(scan1)
+
+# X and Y metric? 
+
+  # FROM BIORAD DOCS
+  # coords <- data.frame( <--- code from documentation for x and y coords
+  #   x = data$distance * cos(pi / 2 - data$azim * pi / 180),
+  #   y = data$distance * sin(pi / 2 - data$azim * pi / 180)
+  # ) 
+
+spatial = df_spatial(scan1)
+spatial
+
+str(spatial)
+proj4string(scan1)  # This should show the current CRS
+
+# Transform to WGS84 (longitude and latitude)
+spatial_obj_wgs84 = spTransform(scan1, CRS("+proj=longlat +datum=WGS84"))
+spatial_obj_wgs84
+
+spatial_obj_wgs84 = df_spatial(spatial_obj_wgs84)
+spatial_obj_wgs84
+
+
 ```
 
 ```{r}
-#what are we looking at
-target_lat <- 43.822761  # Example: La Crosse, WI
-target_lon <- -91.191248
-radius_km <- 50          # Radius around target location in km - experimenting
-reflectivity_min <- 15
-reflectivity_max <- 30
 
-pvol <- read_pvolfile(my_pvolfiles[1])
-pvol=get_scan(pvol[1])
-pvol=data(pvol)
-scan1 <- scan_to_spatial(pvol)
 
-raster=scan_to_raster(pvol, xlim=c(91,92), ylim=c(43,44), res=.01)
-plot(raster)
 
-names(pvol$params)
-ppi = project_as_ppi(scan1)
-ppi_data = ppi$data
-ppi_data
 
-df_spatial(ppi)
+```
 
-basemap <- download_basemap(ppi)
-# then overlay the PPI on the satellite image:
-map(ppi, map = basemap, param = "VRADH")
 
-# Convert the SpatialGridDataFrame to a standard data frame
-ppi_df <- as.data.frame(ppi_data, xy = TRUE)
+```{r}
 
+# Create a polygon as an sf object
+polygon_sf = st_polygon(list(matrix(c(
+  -91.44867314386958, 44.0008594875022,
+  -91.42166991411752, 43.96959345858244,
+  -91.38882968761432, 43.9383499202651,
+  -91.30908288986633, 43.84452005959119,
+  -91.30439624926373, 43.76159527761044,
+  -91.2821172925766,  43.731109613908046,
+  -91.29149697524755, 43.655657392614046,
+  -91.29032228990621, 43.56731989754991,
+  -91.28373419939923, 43.52932870724936,
+  -91.21576151616127, 43.53018159768152,
+  -91.21226382832302, 43.62700264064375,
+  -91.18887258475205, 43.75408393353402,
+  -91.24153724866927, 43.80823812810766,
+  -91.22514300558554, 43.89948570794502,
+  -91.38454921702167, 43.99406597978893,
+  -91.45409667901447, 44.00514694870756,
+  -91.44867314386958, 44.0008594875022
+), ncol = 2, byrow = TRUE)))
+
+polygon_sf = st_sfc(polygon_sf, crs = 4326)  # Set CRS (WGS 84)
+
+#convert to sf object
+polygon_sf = st_sf(geometry = polygon_sf)
+spatial_obj_wgs84 = st_as_sf(spatial_obj_wgs84, coords = c("x", "y"), crs = 4326)
+
+
+#spatial intersection
+pools = st_intersection(spatial_obj_wgs84, polygon_sf)
+pools
+
+print(st_geometry_type(polygon_sf))  # Should return POLYGON or MULTIPOLYGON
+print(st_geometry_type(pools))       # Should return POINT or MULTIPOINT
+
+st_crs(polygon_sf)
+st_crs(pools)
+
+
+ggplot() +
+  geom_sf(data = polygon_sf, fill = NA, color = "red", size = 1) +
+  geom_sf(data = pools, aes(color = DBZH), size = 2) +
+  scale_color_viridis_c(option = "plasma") +
+  labs(title = "DBZH Values Over Polygon", color = "DBZH") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+# ggplot(spatial_obj_wgs84, aes(x = x, y = y, color = DBZH)) +
+#   geom_point(size = 0.5) +
+#   scale_color_viridis_c(option = "C") +
+#   labs(title = "Map of DBZH Values", color = "DBZH") +
+#   theme_minimal() +
+#   coord_fixed()
+# 
+# 
+# polygon_sf = matrix(c( #make this a spatial object
+#             -91.44867314386958, 44.0008594875022,
+#             -91.42166991411752, 43.96959345858244,
+#             -91.38882968761432, 43.9383499202651,
+#             -91.30908288986633, 43.84452005959119,
+#             -91.30439624926373, 43.76159527761044,
+#             -91.2821172925766,  43.731109613908046,
+#             -91.29149697524755, 43.655657392614046,
+#             -91.29032228990621, 43.56731989754991,
+#             -91.28373419939923, 43.52932870724936,
+#             -91.21576151616127, 43.53018159768152,
+#             -91.21226382832302, 43.62700264064375,
+#             -91.18887258475205, 43.75408393353402,
+#             -91.24153724866927, 43.80823812810766,
+#             -91.22514300558554, 43.89948570794502,
+#             -91.38454921702167, 43.99406597978893,
+#             -91.45409667901447, 44.00514694870756,
+#             -91.44867314386958, 44.0008594875022),
+#             ncol = 2, byrow = TRUE)
+# 
+# poly1 = sp::Polygon(polygon_sf)
+# poly1
+# firstPoly = sp::Polygons(list(poly1), ID = "A")
+# firstSpatialPoly <- sp::SpatialPolygons(list(firstPoly))
+# 
+# poly = df_spatial(firstSpatialPoly)
+# poly
+# 
+# str(firstPoly,1)
+# plot(firstSpatialPoly)
+# 
+# pools = inner_join(spatial_obj_wgs84, poly)
+# pools
+# 
+# pts <- SpatialPoints(lonlat)
+# plot(pols, axes=TRUE, las=1)
+# plot(pols, border='blue', 
+#      col='yellow', lwd=3, 
+#      add=TRUE)
+# points(pts, col='red', 
+#        pch=20, cex=3)
+
+```
+
+```{r}
+# Calculate the range-corrected ppi on finer 2000m x 2000m pixel raster
+ppi <- integrate_to_ppi(pvol, example_vp, res = 2000)
+ppi
+# Plot the vertically integrated density (VID) using a
+# 0-200 birds/km^2 color scale
+plot(ppi, param = "VID", zlim = c(0, 200))
+
+```
+
+```{r}
+# Download a basemap and map the ppi
+if (all(sapply(c("ggspatial","prettymapr", "rosm"), requireNamespace, quietly = TRUE))) {
+map(ppi)
+}
+```
+
+```{r}
+# The ppi can also be projected on a user-defined raster, as follows:
+
+# First define the raster
+template_raster <- raster::raster(
+  raster::extent(12, 13, 56, 57),
+  crs = sp::CRS("+proj=longlat")
+)
+
+# Project the ppi on the defined raster
+ppi <- integrate_to_ppi(pvol, example_vp, raster = template_raster)
+
+# Extract the raster data from the ppi object
+raster::brick(ppi$data)
+
+# Calculate the range-corrected ppi on an even finer 500m x 500m pixel raster,
+# cropping the area up to 50000 meter from the radar
+ppi <- integrate_to_ppi(
+  pvol, example_vp, res = 500,
+  xlim = c(-50000, 50000), ylim = c(-50000, 50000)
+)
+plot(ppi, param = "VID", zlim = c(0, 200))
 
 ```
