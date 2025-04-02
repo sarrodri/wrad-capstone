@@ -114,14 +114,165 @@ spatial_obj_wgs84
 ```
 
 ```{r}
+my_pvolfiles = list.files(directory, 
+                          recursive = TRUE, 
+                          full.names = TRUE, 
+                          pattern="KARX")
+my_pvolfiles
+# Ensure the data directory exists
+if (!dir.exists("./data")) {
+  dir.create("./data", recursive = TRUE)
+}
+
+for (pvolfile in my_pvolfiles) {
+  # Skip files that contain "_MDM"
+  if (grepl("_MDM", pvolfile)) {
+    next
+  }
+
+  if (!file.exists(pvolfile)) {
+    warning(paste("File not found:", pvolfile))
+    next  # Skip if the file doesn't exist
+  }
+
+  pvol = tryCatch(
+    { read_pvolfile(pvolfile) },
+    error = function(e) {
+      warning(paste("Could not read:", pvolfile))
+      return(NULL)
+    }
+  )
+
+  if (is.null(pvol)) next  # Skip to the next file if reading fails
+
+  scan = get_scan(pvol, 3)
+  spatial = scan_to_spatial(scan)
+  spatial_df = spTransform(spatial, CRS("+proj=longlat +datum=WGS84"))
+
+  # Extract date and time from filename
+  file_parts = strsplit(basename(pvolfile), "_")[[1]]  
+  if (length(file_parts) < 2) {
+    warning(paste("Unexpected filename format:", pvolfile))
+    next  # Skip if filename format is incorrect
+  }
+  
+  # Create a polygon as an sf object
+  filter_poly = st_polygon(list(matrix(c(
+    -91.44867314386958, 44.0008594875022,
+    -91.42166991411752, 43.96959345858244,
+    -91.38882968761432, 43.9383499202651,
+    -91.30908288986633, 43.84452005959119,
+    -91.30439624926373, 43.76159527761044,
+    -91.2821172925766,  43.731109613908046,
+    -91.29149697524755, 43.655657392614046,
+    -91.29032228990621, 43.56731989754991,
+    -91.28373419939923, 43.52932870724936,
+    -91.21576151616127, 43.53018159768152,
+    -91.21226382832302, 43.62700264064375,
+    -91.18887258475205, 43.75408393353402,
+    -91.24153724866927, 43.80823812810766,
+    -91.22514300558554, 43.89948570794502,
+    -91.38454921702167, 43.99406597978893,
+    -91.45409667901447, 44.00514694870756,
+    -91.44867314386958, 44.0008594875022), ncol = 2, byrow = TRUE)))
+  filter_poly = st_sfc(filter_poly, crs = 4326)  # Set CRS (WGS 84)
+
+  #convert to sf object
+  filter_poly = st_sf(geometry = filter_poly)
+  spatial_df = st_as_sf(spatial_df, coords = c("x", "y"), crs = 4326)
 
 
+  #spatial intersection
+  pools = st_intersection(spatial_df, filter_poly)
 
+  date_part = file_parts[1]  # e.g., "20221001"
+  time_part = file_parts[2]  # e.g., "003817"
 
+  # Construct filename
+  filename = paste0(date_part, "_", time_part, "_DF.csv")
+
+  # Save dataframe
+  write.csv(spatial_df, file.path("./data", filename), row.names = FALSE)
+}
+```
+
+```{r}
+# KARX20231022_161412_V06	Absent
+# KARX20231022_162113_V06	Absent
+# KARX20231022_162801_V06	Absent
+# KARX20231022_163448_V06	Present
+# KARX20231022_164141_V06	Present
+# KARX20231022_164832_V06	Present
+# KARX20231022_165520_V06	Present
+# KARX20231022_170216_V06	Present
+# KARX20231022_170913_V06	Present
+# KARX20231022_171608_V06	Present
+# KARX20231022_172259_V06	Present
+# KARX20231022_173000_V06	Present
+# KARX20231022_173708_V06	Present
+# KARX20231022_174530_V06	Present
+# KARX20231022_175231_V06	Present
+# KARX20231022_175927_V06	Present
+# KARX20231022_180615_V06	Present
+# KARX20231022_181316_V06	Absent
+# KARX20231022_182007_V06	Absent
+# KARX20231022_182713_V06	Absent
+
+# Define base directory where files are stored
+base_dir <- "C:/Users/sarah/Documents/Semesters/Fall 2024/CSCI498/pvol_files/2023"
+
+my_pvolfiles = list.files(base_dir, 
+                          recursive = TRUE, 
+                          full.names = TRUE, 
+                          pattern="KARX")
+
+my_pvolfiles
+
+h5read
+
+pvolfile = system.file("extdata", "volume.h5", package = "bioRad")
+pvolfile
+
+  pvol = read_pvolfile(pvolfile)
+  pvol$scans
+  scan = get_scan(pvol, 3)
+  scan1 = scan_to_spatial(scan)  # Convert to spatial data frame
+  scan1
+  # Extract date and time from filename
+  file_parts = strsplit(basename(pvolfile), "_")[[1]]  
+  if (length(file_parts) < 2) {
+    warning(paste("Unexpected filename format:", pvolfile))
+    next  # Skip if filename format is incorrect
+  }
+  
+  date_part = file_parts[1]  # e.g., "20231022"
+  time_part = file_parts[2]  # e.g., "161412"
+  
+  var_name = paste0("df_", date_part, "_", time_part)  # Unique variable name
+  
+  # Assign the scan1 data frame to the generated variable name
+  assign(var_name, scan1, envir = .GlobalEnv)  # Store in global environment
+
+ls(pattern = '^df_')
 ```
 
 
 ```{r}
+
+df_KARX20231022_000322
+
+spatial = df_spatial(df_KARX20231022_000322)
+spatial
+
+str(spatial)
+proj4string(scan1)  # This should show the current CRS
+
+# Transform to WGS84 (longitude and latitude)
+spatial_obj_wgs84 = spTransform(df_KARX20231022_000322, CRS("+proj=longlat +datum=WGS84"))
+spatial_obj_wgs84
+
+spatial_obj_wgs84 = df_spatial(spatial_obj_wgs84)
+spatial_obj_wgs84
 
 # Create a polygon as an sf object
 polygon_sf = st_polygon(list(matrix(c(
@@ -168,6 +319,22 @@ ggplot() +
   scale_color_viridis_c(option = "plasma") +
   labs(title = "DBZH Values Over Polygon", color = "DBZH") +
   theme_minimal()
+
+ggplot() +
+  annotation_map_tile(zoom = 15, type = "oms") + 
+  geom_sf(data = polygon_sf, fill = NA, color = "red", size = 1) +
+  geom_sf(data = pools, aes(color = DBZH), size = 2) +
+  scale_color_viridis_c(option = "plasma") +
+  labs(title = "DBZH Values Over Polygon", color = "DBZH") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot() +
+  annotation_map_tile(type='osm') +
+  layer_spatial(pools, aes(col=DBZH)) +
+  scale_color_viridis_c(option = "turbo") +
+  labs(title = "DBZH Values Over Polygon", color = "DBZH") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ```
 
